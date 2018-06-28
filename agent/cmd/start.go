@@ -57,6 +57,8 @@ const (
 	flagDisableAPI            = "disable-api"
 	flagDisableSockets        = "disable-sockets"
 	flagLogLevel              = "log-level"
+
+	flagKubeSensuEnable = "kube-sensu-enable"
 )
 
 func init() {
@@ -136,6 +138,8 @@ func newStartCommand() *cobra.Command {
 			cfg.StatsdServer.Port = viper.GetInt(flagStatsdMetricsPort)
 			cfg.StatsdServer.Handlers = viper.GetStringSlice(flagStatsdEventHandlers)
 			cfg.User = viper.GetString(flagUser)
+
+			cfg.KubeSensu.Enable = viper.GetBool(flagKubeSensuEnable)
 
 			agentID := viper.GetString(flagAgentID)
 			if agentID != "" {
@@ -243,6 +247,8 @@ func newStartCommand() *cobra.Command {
 	viper.SetDefault(flagDisableSockets, false)
 	viper.SetDefault(flagLogLevel, "warn")
 
+	viper.SetDefault(flagKubeSensuEnable, false)
+
 	// Merge in config flag set so that it appears in command usage
 	cmd.Flags().AddFlagSet(configFlagSet)
 
@@ -274,6 +280,8 @@ func newStartCommand() *cobra.Command {
 	cmd.Flags().Bool(flagDisableAPI, viper.GetBool(flagDisableAPI), "disable the Agent HTTP API")
 	cmd.Flags().Bool(flagDisableSockets, viper.GetBool(flagDisableSockets), "disable the Agent TCP and UDP event sockets")
 	cmd.Flags().String(flagLogLevel, viper.GetString(flagLogLevel), "logging level [panic, fatal, error, warn, info, debug]")
+
+	cmd.Flags().Bool(flagKubeSensuEnable, viper.GetBool(flagKubeSensuEnable), "enables kubernetes monitoring")
 
 	if err := viper.ReadInConfig(); err != nil && configFile != "" {
 		setupErr = err

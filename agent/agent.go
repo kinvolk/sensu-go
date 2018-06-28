@@ -46,6 +46,8 @@ const (
 	DefaultKeepaliveInterval = 20
 	// DefaultKeepaliveTimeout specifies the default keepalive timeout
 	DefaultKeepaliveTimeout = 120
+	// DefaultKubeSensuEnable specifies if kube-sensu is enabled
+	DefaultKubeSensuEnable = false
 	// DefaultOrganization specifies the default organization
 	DefaultOrganization = "default"
 	// DefaultPassword specifies the default password
@@ -92,6 +94,8 @@ type Config struct {
 	// KeepaliveTimeout is the time after which a sensu-agent is considered dead
 	// back the backend.
 	KeepaliveTimeout uint32
+	// KubeSensu contains the KubeSensu configuration
+	KubeSensu *KubeSensuConfig
 	// Organization sets the Agent's RBAC organization identifier
 	Organization string
 	// Password sets Agent's password
@@ -108,6 +112,11 @@ type Config struct {
 	TLS *types.TLSOptions
 	// User sets the Agent's username
 	User string
+}
+
+// KubeSensu contains the KubeSensu configuration
+type KubeSensuConfig struct {
+	Enable bool
 }
 
 // StatsdServerConfig contains the statsd server configuration
@@ -139,8 +148,11 @@ func FixtureConfig() *Config {
 		Environment:       DefaultEnvironment,
 		KeepaliveInterval: DefaultKeepaliveInterval,
 		KeepaliveTimeout:  DefaultKeepaliveTimeout,
-		Organization:      DefaultOrganization,
-		Password:          DefaultPassword,
+		KubeSensu: &KubeSensuConfig{
+			Enable: DefaultKubeSensuEnable,
+		},
+		Organization: DefaultOrganization,
+		Password:     DefaultPassword,
 		Socket: &SocketConfig{
 			Host: DefaultSocketHost,
 			Port: DefaultSocketPort,
@@ -161,6 +173,7 @@ func FixtureConfig() *Config {
 func NewConfig() *Config {
 	c := &Config{
 		API:          &APIConfig{},
+		KubeSensu:    &KubeSensuConfig{},
 		Socket:       &SocketConfig{},
 		StatsdServer: &StatsdServerConfig{},
 	}
@@ -190,6 +203,7 @@ type Agent struct {
 	entity          *types.Entity
 	handler         *handler.MessageHandler
 	header          http.Header
+	kubeSensu       *KubeSensu
 	inProgress      map[string]*types.CheckConfig
 	inProgressMu    *sync.Mutex
 	statsdServer    *statsd.Server
@@ -220,6 +234,7 @@ func NewAgent(config *Config) *Agent {
 	agent.statsdServer = NewStatsdServer(agent)
 	agent.handler.AddHandler(types.CheckRequestType, agent.handleCheck)
 	agent.assetManager = assetmanager.New(config.CacheDir, agent.getAgentEntity())
+	agent.kubeSensu = NewKubeSensu(agent)
 
 	return agent
 }
@@ -389,6 +404,10 @@ func (a *Agent) Run() error {
 		a.StartStatsd()
 	}
 
+	if a.config.KubeSensu.Enable {
+		a.StartKubeSensu()
+	}
+
 	conn, err := transport.Connect(a.backendSelector.Select(), a.config.TLS, a.header)
 	if err != nil {
 		return err
@@ -484,6 +503,16 @@ func (a *Agent) StartStatsd() {
 	go func() {
 		if err := a.statsdServer.Run(a.context); err != nil {
 			logger.WithError(err).Errorf("error with statsd server on address: %s, statsd listener will not run", a.statsdServer.MetricsAddr)
+		}
+	}()
+}
+
+func (a *Agent) StartKubeSensu() {
+	logger.Info("starting kube-sensu routine")
+
+	go func() {
+		if err := a.kubeSensu.Run(a.context); err != nil {
+			logger.WithError(err).Errorf("error with kube-sensu, will not run")
 		}
 	}()
 }
